@@ -3,9 +3,11 @@ package main
 import (
 	"log"
 
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+
+	"github.com/RZ-ru/Inshakerov_bot/internal/bot"
 	"github.com/RZ-ru/Inshakerov_bot/internal/config"
 	"github.com/RZ-ru/Inshakerov_bot/internal/db"
-	"github.com/RZ-ru/Inshakerov_bot/internal/scraper"
 )
 
 func main() {
@@ -17,28 +19,38 @@ func main() {
 	if database == nil {
 		log.Fatal("❌ Ошибка: соединение с базой не установлено")
 	}
-
 	defer database.Close()
 	log.Println("📡 Подключение к базе установлено")
 
-	// 3️⃣ Адрес страницы с коктейлями
-	url := "https://ru.inshaker.com/cocktails"
-
-	// 4️⃣ Парсим рецепты с сайта
-	log.Println("🔍 Начинаем парсинг сайта...")
-	cocktails, err := scraper.ParseRecipes(url)
+	// 3️⃣ Инициализируем Telegram-бота
+	botAPI, err := tgbotapi.NewBotAPI(cfg.BotToken)
 	if err != nil {
-		log.Fatalf("Ошибка при парсинге: %v", err)
+		log.Fatalf("❌ Ошибка запуска бота: %v", err)
 	}
-	log.Printf("🍸 Найдено рецептов: %d", len(cocktails))
+	botAPI.Debug = false
+	log.Printf("🤖 Бот запущен как %s", botAPI.Self.UserName)
 
-	// 5️⃣ Сохраняем в базу данных
-	if err := db.SaveRecipes(database, cocktails); err != nil {
-		log.Fatalf("Ошибка сохранения рецептов: %v", err)
+	// 4️⃣ Настраиваем получение обновлений
+	u := tgbotapi.NewUpdate(0)
+	u.Timeout = 60
+
+	updates := botAPI.GetUpdatesChan(u)
+
+	// 5️⃣ Основной цикл
+	for update := range updates {
+		if update.Message != nil {
+			switch {
+			case update.Message.IsCommand():
+				switch update.Message.Command() {
+				case "start":
+					bot.HandleStart(botAPI, update)
+				}
+			default:
+				bot.HandleIngredientInput(botAPI, update, database)
+			}
+		} else if update.CallbackQuery != nil {
+			bot.HandleIngredientConfirm(botAPI, update, database)
+			bot.HandleCallback(botAPI, update, database)
+		}
 	}
-	log.Printf("🧾 Попытка сохранить %d рецептов...", len(cocktails))
-	if err := db.SaveRecipes(database, cocktails); err != nil {
-		log.Fatalf("Ошибка сохранения рецептов: %v", err)
-	}
-	log.Println("✅ Все рецепты успешно сохранены в базу!")
 }

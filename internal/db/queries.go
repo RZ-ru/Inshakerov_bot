@@ -115,3 +115,119 @@ func GetCocktailsByIngredients(db *sql.DB, ingredients []string) ([]Cocktail, er
 
 	return result, nil
 }
+
+// AddFavorite — добавить коктейль в избранное
+func AddFavorite(db *sql.DB, userID int64, cocktailID int) error {
+	_, err := db.Exec(`
+		INSERT INTO favorites (user_id, cocktail_id)
+		VALUES ($1, $2)
+		ON CONFLICT (user_id, cocktail_id) DO NOTHING;
+	`, userID, cocktailID)
+	return err
+}
+
+// RemoveFavorite — удалить коктейль из избранного
+func RemoveFavorite(db *sql.DB, userID int64, cocktailID int) error {
+	_, err := db.Exec(`
+		DELETE FROM favorites
+		WHERE user_id = $1 AND cocktail_id = $2;
+	`, userID, cocktailID)
+	return err
+}
+
+// GetFavorites — получить список избранных коктейлей пользователя
+func GetFavorites(db *sql.DB, userID int64) ([]Cocktail, error) {
+	rows, err := db.Query(`
+		SELECT c.id, c.name, c.url, c.image_url, c.instructions
+		FROM cocktails c
+		JOIN favorites f ON c.id = f.cocktail_id
+		WHERE f.user_id = $1
+		ORDER BY f.created_at DESC;
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []Cocktail
+	for rows.Next() {
+		var c Cocktail
+		if err := rows.Scan(&c.ID, &c.Name, &c.URL, &c.ImageURL, &c.Instructions); err != nil {
+			return nil, err
+		}
+		result = append(result, c)
+	}
+	return result, nil
+}
+
+// AddIgnored — добавить коктейль в игнор
+func AddIgnored(db *sql.DB, userID int64, cocktailID int) error {
+	_, err := db.Exec(`
+		INSERT INTO ignored (user_id, cocktail_id)
+		VALUES ($1, $2)
+		ON CONFLICT (user_id, cocktail_id) DO NOTHING;
+	`, userID, cocktailID)
+	return err
+}
+
+// RemoveIgnored — удалить коктейль из игнора
+func RemoveIgnored(db *sql.DB, userID int64, cocktailID int) error {
+	_, err := db.Exec(`
+		DELETE FROM ignored
+		WHERE user_id = $1 AND cocktail_id = $2;
+	`, userID, cocktailID)
+	return err
+}
+
+// GetIgnored — получить список игнорированных коктейлей пользователя
+func GetIgnored(db *sql.DB, userID int64) ([]Cocktail, error) {
+	rows, err := db.Query(`
+		SELECT c.id, c.name, c.url, c.image_url, c.instructions
+		FROM cocktails c
+		JOIN ignored i ON c.id = i.cocktail_id
+		WHERE i.user_id = $1
+		ORDER BY i.created_at DESC;
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []Cocktail
+	for rows.Next() {
+		var c Cocktail
+		if err := rows.Scan(&c.ID, &c.Name, &c.URL, &c.ImageURL, &c.Instructions); err != nil {
+			return nil, err
+		}
+		result = append(result, c)
+	}
+	return result, nil
+}
+
+// GetCocktailsBySimilarIngredients ищет коктейли, где ингредиенты похожи по названию
+func GetCocktailsBySimilarIngredients(db *sql.DB, ingredient string) ([]Cocktail, error) {
+	query := `
+		SELECT DISTINCT c.id, c.name, c.url, c.image_url, c.instructions
+		FROM cocktails c
+		JOIN cocktail_ingredients ci ON c.id = ci.cocktail_id
+		JOIN goods g ON ci.good_id = g.id
+		WHERE LOWER(g.name) ILIKE '%' || $1 || '%';
+	`
+
+	rows, err := db.Query(query, ingredient)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var cocktails []Cocktail
+	for rows.Next() {
+		var c Cocktail
+		if err := rows.Scan(&c.ID, &c.Name, &c.URL, &c.ImageURL, &c.Instructions); err != nil {
+			return nil, err
+		}
+		cocktails = append(cocktails, c)
+	}
+
+	return cocktails, nil
+}
