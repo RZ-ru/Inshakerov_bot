@@ -50,6 +50,10 @@ func insertCocktail(db *sql.DB, c Cocktail) (int, error) {
 		RETURNING id;
 	`, c.Name, c.URL, c.ImageURL, c.Instructions).Scan(&id)
 
+	if err == sql.ErrNoRows {
+		// если обновление без RETURNING
+		err = db.QueryRow(`SELECT id FROM cocktails WHERE name = $1`, c.Name).Scan(&id)
+	}
 	return id, err
 }
 
@@ -57,11 +61,13 @@ func insertCocktail(db *sql.DB, c Cocktail) (int, error) {
 func getOrCreateGood(db *sql.DB, name string) (int, error) {
 	var id int
 
-	// Пробуем найти ингредиент
 	err := db.QueryRow(`SELECT id FROM goods WHERE name = $1`, name).Scan(&id)
 	if err == sql.ErrNoRows {
-		// Если нет — создаём
-		err = db.QueryRow(`INSERT INTO goods (name) VALUES ($1) RETURNING id`, name).Scan(&id)
+		err = db.QueryRow(`
+			INSERT INTO goods (name) VALUES ($1)
+			ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+			RETURNING id;
+		`, name).Scan(&id)
 	}
 	return id, err
 }
